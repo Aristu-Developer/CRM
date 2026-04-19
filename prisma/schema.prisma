@@ -1,0 +1,440 @@
+// Nepal CRM – Prisma Schema
+// Enum-like columns use String type for portability.
+// Running on PostgreSQL (Neon).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// AUTH
+// ─────────────────────────────────────────────
+
+model User {
+  id          String   @id @default(cuid())
+  name        String
+  email       String   @unique
+  password    String   // bcrypt hash
+  isActive           Boolean   @default(true)
+  isVerified         Boolean   @default(false)
+  verifyToken        String?
+  resetToken         String?
+  resetTokenExpires  DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // A user can belong to multiple businesses (one per business invitation/creation)
+  memberships      Membership[]
+  sentInvites      TeamInvite[]  @relation("SentInvites")
+  receivedInvites  TeamInvite[]  @relation("AcceptedInvites")
+  createdSales     Sale[]        @relation("SaleCreatedBy")
+  createdPayments  Payment[]     @relation("PaymentCreatedBy")
+  adjustments      InventoryAdjustment[]
+  createdPurchases Purchase[]    @relation("PurchaseCreatedBy")
+  createdExpenses  Expense[]     @relation("ExpenseCreatedBy")
+  createdLoans     Loan[]        @relation("LoanCreatedBy")
+  createdRepayments LoanRepayment[] @relation("RepaymentCreatedBy")
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// BUSINESS / WORKSPACE
+// ─────────────────────────────────────────────
+
+// Each business is a fully isolated workspace.
+// Business settings are stored directly on this model (replaces the old BusinessSetting singleton).
+model Business {
+  id              String   @id @default(cuid())
+  // Settings fields (kept with same names as old BusinessSetting for API/UI compatibility)
+  businessName    String   @default("My Business")
+  businessPhone   String   @default("")
+  businessEmail   String   @default("")
+  businessAddress String   @default("")
+  businessCity    String   @default("")
+  currency        String   @default("NPR")
+  currencySymbol  String   @default("Rs.")
+  invoicePrefix   String   @default("INV")
+  lowStockDefault Int       @default(10)
+  // Onboarding & business-type config
+  onboardingDone  Boolean   @default(true)   // false for new registrations; preserved as true for existing businesses
+  businessType    String    @default("retail") // "retail" | "trading" | "agency" | "organization" | "other"
+  businessSubType String?                      // only set for retail: "GROCERY" | "MEAT" | "CLOTHING" | "OTHER"
+  customerLabel   String    @default("Customers")
+  productLabel    String    @default("Products")
+  saleLabel       String    @default("Sales")
+  hasInventory    Boolean   @default(true)
+  usesDueTracking Boolean   @default(true)
+  modules         String    @default("")    // JSON-encoded ModuleConfig; empty = use template defaults
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime? // soft-delete: set when account is deleted
+
+  memberships      Membership[]
+  customers        Customer[]
+  products         Product[]
+  sales            Sale[]
+  payments         Payment[]
+  teamInvites      TeamInvite[]
+  suppliers        Supplier[]
+  purchases        Purchase[]
+  expenses         Expense[]
+  loans            Loan[]
+  notificationLogs NotificationLog[]
+
+  @@map("businesses")
+}
+
+// Membership links a User to a Business with a scoped role.
+model Membership {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id])
+  role       String   @default("STAFF") // "ADMIN" | "STAFF"
+  joinedAt   DateTime @default(now())
+
+  @@unique([userId, businessId])
+  @@map("memberships")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  createdAt    DateTime @default(now())
+
+  @@map("sessions")
+}
+
+// ─────────────────────────────────────────────
+// CUSTOMERS
+// ─────────────────────────────────────────────
+
+model Customer {
+  id           String   @id @default(cuid())
+  businessId   String
+  business     Business @relation(fields: [businessId], references: [id])
+  name         String
+  phone        String
+  altPhone     String?
+  email        String?
+  address      String?
+  city         String?
+  businessName String?
+  customerType String   @default("INDIVIDUAL") // "INDIVIDUAL" | "BUSINESS"
+  panVat       String?
+  notes        String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sales Sale[]
+
+  @@map("customers")
+}
+
+// ─────────────────────────────────────────────
+// PRODUCTS / INVENTORY
+// ─────────────────────────────────────────────
+
+model Product {
+  id           String   @id @default(cuid())
+  businessId   String
+  business     Business @relation(fields: [businessId], references: [id])
+  name         String
+  sku          String
+  category     String?
+  description  String?
+  costPrice    Float    @default(0)
+  sellingPrice Float
+  stock            Float    @default(0)
+  reorderLevel     Int      @default(10)
+  unit             String   @default("pcs")
+  // Optional purchase-side unit conversion
+  purchaseUnit     String?  // supplier's unit, e.g. "yard", "feet"
+  conversionFactor Float?   // base units per purchase unit, e.g. 0.9144 (1 yard = 0.9144 m)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  saleItems     SaleItem[]
+  adjustments   InventoryAdjustment[]
+  purchaseItems PurchaseItem[]
+
+  // SKU is unique per business, not globally
+  @@unique([sku, businessId])
+  @@map("products")
+}
+
+model InventoryAdjustment {
+  id         String   @id @default(cuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+  type       String   // "MANUAL_IN" | "MANUAL_OUT" | "SALE" | "RETURN" | "INITIAL" | "PURCHASE"
+  quantity   Float    // positive = stock in, negative = stock out; Float to support unit conversions
+  reason     String?
+  adjustedBy String
+  user       User     @relation(fields: [adjustedBy], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@map("inventory_adjustments")
+}
+
+// ─────────────────────────────────────────────
+// SALES
+// ─────────────────────────────────────────────
+
+model Sale {
+  id             String    @id @default(cuid())
+  businessId     String
+  business       Business  @relation(fields: [businessId], references: [id])
+  invoiceNumber  String
+  customerId     String
+  customer       Customer  @relation(fields: [customerId], references: [id])
+  saleDate       DateTime  @default(now())
+  subtotal       Float
+  discountAmount Float     @default(0)
+  totalAmount    Float
+  paidAmount     Float     @default(0)
+  dueAmount      Float
+  paymentStatus  String    @default("UNPAID") // "PAID" | "PARTIAL" | "UNPAID" | "OVERDUE"
+  paymentMethod  String    @default("CASH")
+  saleNote       String?
+  promiseNote    String?
+  nextRepayDate  DateTime?
+  createdById    String
+  createdBy      User      @relation("SaleCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  items    SaleItem[]
+  payments Payment[]
+
+  // Invoice number is unique per business
+  @@unique([invoiceNumber, businessId])
+  @@map("sales")
+}
+
+model SaleItem {
+  id          String  @id @default(cuid())
+  saleId      String
+  sale        Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product @relation(fields: [productId], references: [id])
+  productName String
+  quantity    Int
+  unitPrice   Float
+  discount    Float   @default(0)
+  total       Float
+
+  @@map("sale_items")
+}
+
+// ─────────────────────────────────────────────
+// PAYMENTS
+// ─────────────────────────────────────────────
+
+model Payment {
+  id            String   @id @default(cuid())
+  businessId    String
+  business      Business @relation(fields: [businessId], references: [id])
+  saleId        String
+  sale          Sale     @relation(fields: [saleId], references: [id])
+  customerId    String
+  paymentDate   DateTime @default(now())
+  amount        Float
+  paymentMethod String   @default("CASH")
+  referenceNote String?
+  remarks       String?
+  receivedById  String
+  receivedBy    User     @relation("PaymentCreatedBy", fields: [receivedById], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@map("payments")
+}
+
+// ─────────────────────────────────────────────
+// TEAM INVITES
+// ─────────────────────────────────────────────
+
+model TeamInvite {
+  id           String    @id @default(cuid())
+  businessId   String
+  business     Business  @relation(fields: [businessId], references: [id])
+  email        String
+  role         String    @default("STAFF") // "ADMIN" | "STAFF"
+  status       String    @default("PENDING") // "PENDING" | "ACCEPTED" | "CANCELED"
+  message      String?
+  invitedById  String
+  invitedBy    User      @relation("SentInvites", fields: [invitedById], references: [id])
+  acceptedById String?
+  acceptedBy   User?     @relation("AcceptedInvites", fields: [acceptedById], references: [id])
+  createdAt    DateTime  @default(now())
+  acceptedAt   DateTime?
+  canceledAt   DateTime?
+
+  @@map("team_invites")
+}
+
+// ─────────────────────────────────────────────
+// SUPPLIERS
+// ─────────────────────────────────────────────
+
+model Supplier {
+  id            String   @id @default(cuid())
+  businessId    String
+  business      Business @relation(fields: [businessId], references: [id])
+  name          String
+  phone         String?
+  email         String?
+  address       String?
+  contactPerson String?
+  notes         String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  purchases Purchase[]
+
+  @@map("suppliers")
+}
+
+// ─────────────────────────────────────────────
+// PURCHASES
+// ─────────────────────────────────────────────
+
+model Purchase {
+  id             String    @id @default(cuid())
+  businessId     String
+  business       Business  @relation(fields: [businessId], references: [id])
+  supplierId     String?
+  supplier       Supplier? @relation(fields: [supplierId], references: [id])
+  purchaseDate   DateTime  @default(now())
+  referenceNo    String?   // supplier's bill/invoice number
+  subtotal       Float
+  discountAmount Float     @default(0)
+  totalAmount    Float
+  paidAmount     Float     @default(0)
+  dueAmount      Float
+  paymentStatus  String    @default("UNPAID") // "PAID" | "PARTIAL" | "UNPAID"
+  paymentMethod  String    @default("CASH")
+  notes          String?
+  createdById    String
+  createdBy      User      @relation("PurchaseCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  items PurchaseItem[]
+
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id          String    @id @default(cuid())
+  purchaseId  String
+  purchase    Purchase  @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product?  @relation(fields: [productId], references: [id])
+  productName String
+  quantity    Float     // total purchase qty in purchaseUnit (auto-summed from packageLines when detailed mode)
+  unitPrice   Float
+  total       Float
+  // Unit conversion (all optional — null = no conversion, direct base-unit entry)
+  purchaseUnit   String?  // unit used for this purchase, e.g. "yard"
+  packageType    String?  // default package type label, e.g. "roll"
+  packageLines   String?  // JSON: [{type,label,qty}] — detailed package breakdown; null = simple entry
+  convertedQty   Float?   // base-unit quantity added to stock (quantity × conversionFactor)
+
+  @@map("purchase_items")
+}
+
+// ─────────────────────────────────────────────
+// EXPENSES
+// ─────────────────────────────────────────────
+
+model Expense {
+  id            String   @id @default(cuid())
+  businessId    String
+  business      Business @relation(fields: [businessId], references: [id])
+  title         String
+  category      String   @default("OTHER") // "RENT" | "UTILITIES" | "SALARIES" | "TRANSPORT" | "MAINTENANCE" | "OTHER"
+  amount        Float
+  expenseDate   DateTime @default(now())
+  paidTo        String?
+  paymentMethod String   @default("CASH")
+  notes         String?
+  createdById   String
+  createdBy     User     @relation("ExpenseCreatedBy", fields: [createdById], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("expenses")
+}
+
+// ─────────────────────────────────────────────
+// LOANS
+// ─────────────────────────────────────────────
+
+model Loan {
+  id              String    @id @default(cuid())
+  businessId      String
+  business        Business  @relation(fields: [businessId], references: [id])
+  partyName       String
+  type            String    @default("TAKEN") // "TAKEN" (we borrowed) | "GIVEN" (we lent)
+  principalAmount Float
+  interestRate    Float     @default(0) // annual %
+  startDate       DateTime  @default(now())
+  dueDate         DateTime?
+  status          String    @default("ACTIVE") // "ACTIVE" | "CLOSED"
+  notes           String?
+  createdById     String
+  createdBy       User      @relation("LoanCreatedBy", fields: [createdById], references: [id])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  repayments LoanRepayment[]
+
+  @@map("loans")
+}
+
+model LoanRepayment {
+  id             String   @id @default(cuid())
+  loanId         String
+  loan           Loan     @relation(fields: [loanId], references: [id])
+  amount         Float
+  interestAmount Float    @default(0)
+  repaymentDate  DateTime @default(now())
+  paymentMethod  String   @default("CASH")
+  notes          String?
+  createdById    String
+  createdBy      User     @relation("RepaymentCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+
+  @@map("loan_repayments")
+}
+
+// ─────────────────────────────────────────────
+// NOTIFICATIONS / EMAIL LOG
+// ─────────────────────────────────────────────
+
+model NotificationLog {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id])
+  type       String   // "MONTHLY_STATEMENT" | "YEARLY_SUMMARY"
+  period     String   // "2024-01" for monthly, "2024" for yearly
+  sentAt     DateTime @default(now())
+  sentTo     String   // recipient email address
+  status     String   @default("SENT") // "SENT" | "FAILED"
+  error      String?
+
+  @@map("notification_logs")
+}

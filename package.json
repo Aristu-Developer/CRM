@@ -1,0 +1,53 @@
+{
+  "name": "nepal-crm",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma migrate reset --force && npm run db:seed",
+    "make-admin": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/make-admin.ts",
+    "cleanup-users": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/cleanup-users.ts"
+  },
+  "dependencies": {
+    "@auth/prisma-adapter": "^2.7.2",
+    "@hookform/resolvers": "^3.9.1",
+    "@prisma/client": "5.22.0",
+    "@tanstack/react-table": "^8.20.5",
+    "@types/nodemailer": "^8.0.0",
+    "bcryptjs": "^2.4.3",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "next": "14.2.18",
+    "next-auth": "^4.24.10",
+    "nodemailer": "^7.0.13",
+    "qrcode.react": "^4.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hook-form": "^7.54.0",
+    "recharts": "^2.13.3",
+    "tailwind-merge": "^2.5.4",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.17.10",
+    "@types/react": "^18.3.14",
+    "@types/react-dom": "^18.3.5",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "14.2.18",
+    "postcss": "^8.4.49",
+    "prisma": "5.22.0",
+    "tailwindcss": "^3.4.16",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
+  }
+}

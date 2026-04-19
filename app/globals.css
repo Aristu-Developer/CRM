@@ -1,0 +1,80 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-gray-200;
+  }
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+  }
+  h1 { @apply text-2xl font-bold text-gray-900; }
+  h2 { @apply text-xl  font-semibold text-gray-800; }
+  h3 { @apply text-lg  font-medium text-gray-800; }
+}
+
+@layer components {
+  .page-header {
+    @apply flex items-center justify-between mb-6;
+  }
+  .card {
+    @apply bg-white rounded-xl border border-gray-200 shadow-sm;
+  }
+  .form-section {
+    @apply card p-6 space-y-4;
+  }
+  .table-container {
+    @apply card overflow-x-auto;
+  }
+  .stat-card {
+    @apply card p-5 flex items-start gap-4;
+  }
+}
+
+/* ─── Invoice print styles ──────────────────────────────────────────────── */
+@media print {
+  /* Hide chrome — sidebar, navbar, and action buttons */
+  aside,
+  header,
+  .print-hidden { display: none !important; }
+
+  /* Remove layout offsets applied by the shell */
+  main {
+    margin-left: 0 !important;
+    padding-top: 0 !important;
+  }
+
+  main > div {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+
+  /* Remove screen-only centering from the invoice page wrapper */
+  .invoice-page-wrap {
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  /* Invoice card becomes a flat white page */
+  .invoice-card {
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 32px !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  body {
+    background: white !important;
+  }
+
+  @page {
+    margin: 12mm;
+    size: A4 portrait;
+  }
+}
